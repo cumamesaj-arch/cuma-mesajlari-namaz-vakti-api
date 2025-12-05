@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: cuma-namaz-api
+    env: docker
+    plan: free
+    buildCommand: dotnet restore && dotnet publish -c Release -o ./publish
+    startCommand: dotnet publish/DiyanetNamazVakti.Api.dll --urls http://0.0.0.0:$PORT
+    envVars:
+      - key: AwqatSalahSettings__ApiUri
+        value: https://awqatsalah.diyanet.gov.tr/
+      - key: AwqatSalahSettings__TokenLifetimeMinutes
+        value: 45
+      - key: AwqatSalahSettings__RefreshTokenLifetimeMinutes
+        value: 15
+      - key: AwqatSalahSettings__UserName
+        value: cumamesaj@gmail.com
+      - key: AwqatSalahSettings__Password
+        value: eW7%!wH0
+      - key: PORT
+        value: 10000
+
