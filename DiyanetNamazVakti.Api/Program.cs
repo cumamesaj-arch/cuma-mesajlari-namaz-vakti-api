@@ -78,21 +78,14 @@ if (!string.IsNullOrEmpty(port))
 
 app.UseCors();
 
-// Azure App Service'de HTTPS redirect'i kapat (Azure kendi yapıyor)
+// Azure App Service ve Render.com gibi platformlarda HTTPS redirect'i kapat (Platform kendi yapıyor)
 if (!app.Environment.IsDevelopment())
 {
-    app.UseHttpsRedirection();
+    // app.UseHttpsRedirection(); // Bu satır kapatıldı
 }
 
 app.UseAuthorization();
 
 app.MapControllers();
-
-// Railway ve diğer cloud platformlar için PORT environment variable'ını kullan
-var port = Environment.GetEnvironmentVariable("PORT");
-if (!string.IsNullOrEmpty(port))
-{
-    app.Urls.Add($"http://0.0.0.0:{port}");
-}
 
 app.Run();
