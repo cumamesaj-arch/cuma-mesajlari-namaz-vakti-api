@@ -3,16 +3,17 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Copy csproj and restore dependencies
-COPY ["DiyanetNamazVakti.Api.csproj", "./"]
-RUN dotnet restore "DiyanetNamazVakti.Api.csproj"
+COPY DiyanetNamazVakti.Api.csproj ./
+RUN dotnet restore DiyanetNamazVakti.Api.csproj
 
-# Copy everything else and build
-COPY . .
-RUN dotnet build "DiyanetNamazVakti.Api.csproj" -c Release -o /app/build
+# Copy everything else
+COPY . ./
+
+# Build
+RUN dotnet build DiyanetNamazVakti.Api.csproj -c Release -o /app/build
 
 # Publish
-FROM build AS publish
-RUN dotnet publish "DiyanetNamazVakti.Api.csproj" -c Release -o /app/publish
+RUN dotnet publish DiyanetNamazVakti.Api.csproj -c Release -o /app/publish
 
 # Runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
@@ -21,7 +22,6 @@ EXPOSE 8080
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 
 # Copy published app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
 
 ENTRYPOINT ["dotnet", "DiyanetNamazVakti.Api.dll"]
-
