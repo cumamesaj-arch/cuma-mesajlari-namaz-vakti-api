@@ -26,7 +26,7 @@ public class AwqatSalahService : IAwqatSalahService
         if (result is null)
             _cacheService.Remove(MethodBase.GetCurrentMethod()!.DeclaringType!.FullName! + cityId);
 
-        return result;
+        return result ?? new List<AwqatSalahModel>();
     }
 
     public async Task<List<AwqatSalahModel>> MonthlyAwqatSalah(int cityId)

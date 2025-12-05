@@ -1,5 +1,6 @@
 ﻿using static System.Net.Mime.MediaTypeNames;
 using System.Net.Http.Headers;
+using System.Net.Http;
 
 namespace DiyanetNamazVakti.Api.Service.Implementations;
 
@@ -27,19 +28,38 @@ public class AwqatSalahApiService : IAwqatSalahConnectService
 
         await AddToken(cancellationToken);
 
-        HttpResponseMessage result;
+        // Her istek için yeni bir HttpRequestMessage oluştur ve token'ı ekle
+        var baseAddress = _client.BaseAddress ?? new Uri("https://awqatsalah.diyanet.gov.tr/");
+        var requestMessage = new HttpRequestMessage();
         if (method == MethodOption.Get)
-            result = await _client.GetAsync(request, cancellationToken: cancellationToken);
+        {
+            requestMessage.Method = HttpMethod.Get;
+            requestMessage.RequestUri = new Uri(baseAddress, request);
+        }
         else
         {
+            requestMessage.Method = HttpMethod.Post;
+            requestMessage.RequestUri = new Uri(baseAddress, request);
             var postModel = new StringContent(JsonSerializer.Serialize(model), Encoding.UTF8, Application.Json);
-            result = await _client.PostAsync(request, postModel, cancellationToken: cancellationToken);
+            requestMessage.Content = postModel;
         }
+        
+        // Token'ı request message'a ekle
+        var token = await _cacheService.GetOrCreateAsync(nameof(CacheNameConstants.TokenCacheName), async () => await AwqatSalahLogin(cancellationToken), DateTime.Now.AddMinutes(_tokenLifeTimeMinutes));
+        requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+
+        HttpResponseMessage result = await _client.SendAsync(requestMessage, cancellationToken);
 
         if (result.IsSuccessStatusCode)
         {
             var response = await result.Content.ReadFromJsonAsync<RestDataResult<T>>(JsonConstants.SerializerOptions, cancellationToken);
             return response!.Data;
+        }
+        else
+        {
+            // Hata durumunda response body'yi logla
+            var errorContent = await result.Content.ReadAsStringAsync(cancellationToken);
+            Console.WriteLine($"[AwqatSalahApiService] Error {result.StatusCode}: {errorContent}");
         }
         return null;
     }
