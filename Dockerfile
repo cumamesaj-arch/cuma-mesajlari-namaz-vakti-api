@@ -6,14 +6,14 @@ WORKDIR /src
 COPY DiyanetNamazVakti.Api/DiyanetNamazVakti.Api.csproj DiyanetNamazVakti.Api/
 RUN dotnet restore DiyanetNamazVakti.Api/DiyanetNamazVakti.Api.csproj
 
-# Copy everything else and build
+# Copy everything else
 COPY DiyanetNamazVakti.Api/ DiyanetNamazVakti.Api/
+
+# Build
 WORKDIR /src/DiyanetNamazVakti.Api
 RUN dotnet build -c Release -o /app/build
 
 # Publish
-FROM build AS publish
-WORKDIR /src/DiyanetNamazVakti.Api
 RUN dotnet publish -c Release -o /app/publish
 
 # Runtime image
@@ -23,6 +23,6 @@ EXPOSE 8080
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 
 # Copy published app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
 
 ENTRYPOINT ["dotnet", "DiyanetNamazVakti.Api.dll"]
