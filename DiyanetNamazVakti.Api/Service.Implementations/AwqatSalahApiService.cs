@@ -77,14 +77,28 @@ public class AwqatSalahApiService : IAwqatSalahConnectService
         {
             if ((DateTime.Now - token.ExpireTime).TotalMinutes < _awqatSalahSettings.RefreshTokenLifetimeMinutes)
             {
-                _cacheService.Remove(CacheNameConstants.TokenCacheName);
-                token = await _cacheService.GetOrCreateAsync(CacheNameConstants.TokenCacheName,
-                    async () => await AwqatSalahRefreshToken(token.RefreshToken, cancellationToken), DateTime.Now.AddMinutes(_tokenLifeTimeMinutes));
+                // Refresh token deneniyor
+                try
+                {
+                    _cacheService.Remove(CacheNameConstants.TokenCacheName);
+                    token = await _cacheService.GetOrCreateAsync(CacheNameConstants.TokenCacheName,
+                        async () => await AwqatSalahRefreshToken(token.RefreshToken, cancellationToken), DateTime.Now.AddMinutes(_tokenLifeTimeMinutes));
 
-                _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+                    _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+                }
+                catch (HttpRequestException ex)
+                {
+                    // Refresh token başarısız, cache'i temizle ve direkt login yap
+                    Console.WriteLine($"[AwqatSalahApiService] Refresh token failed ({ex.Message}), clearing cache and doing fresh login...");
+                    _cacheService.Remove(CacheNameConstants.TokenCacheName);
+                    token = await AwqatSalahLogin(cancellationToken);
+                    await _cacheService.GetOrCreateAsync(CacheNameConstants.TokenCacheName, async () => token, DateTime.Now.AddMinutes(_tokenLifeTimeMinutes));
+                    _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+                }
             }
             else
             {
+                // Token çok eski, direkt login yap
                 _cacheService.Remove(CacheNameConstants.TokenCacheName);
                 await AddToken(cancellationToken);
             }
@@ -93,17 +107,23 @@ public class AwqatSalahApiService : IAwqatSalahConnectService
 
     private async Task<TokenWithExpireModel> AwqatSalahLogin(CancellationToken cancellationToken)
     {
+        Console.WriteLine($"[AwqatSalahApiService] Attempting login with user: {_awqatSalahSettings.UserName}");
         var loginCredential = new StringContent(JsonSerializer.Serialize(new LoginModel() { Password = _awqatSalahSettings.Password, Email = _awqatSalahSettings.UserName }), Encoding.UTF8, Application.Json);
 
         var resultAuth = await _client.PostAsync("Auth/Login", loginCredential, cancellationToken: cancellationToken);
 
         if (!resultAuth.IsSuccessStatusCode)
-            throw new HttpRequestException(resultAuth.StatusCode.ToString());
+        {
+            var errorContent = await resultAuth.Content.ReadAsStringAsync(cancellationToken);
+            Console.WriteLine($"[AwqatSalahApiService] Login failed: {resultAuth.StatusCode} - {errorContent}");
+            throw new HttpRequestException($"Login failed: {resultAuth.StatusCode} - {errorContent}");
+        }
 
         using var stream = await resultAuth.Content.ReadAsStreamAsync();
         using var jsonDoc = await JsonDocument.ParseAsync(stream);
         var token = jsonDoc.RootElement.GetProperty("data").Deserialize<TokenWithExpireModel>(JsonConstants.SerializerOptions)!;
         token.ExpireTime = DateTime.Now.AddMinutes(_awqatSalahSettings.TokenLifetimeMinutes);
+        Console.WriteLine($"[AwqatSalahApiService] Login successful, token expires at: {token.ExpireTime}");
         return token;
     }
 
@@ -111,7 +131,12 @@ public class AwqatSalahApiService : IAwqatSalahConnectService
     {
         var resultAuth = await _client.GetAsync($"Auth/RefreshToken/{refreshToken}", cancellationToken: cancellationToken);
         if (!resultAuth.IsSuccessStatusCode)
-            throw new HttpRequestException(resultAuth.StatusCode.ToString());
+        {
+            // Refresh token başarısız, hata mesajını logla ve exception fırlat
+            var errorContent = await resultAuth.Content.ReadAsStringAsync(cancellationToken);
+            Console.WriteLine($"[AwqatSalahApiService] Refresh token failed: {resultAuth.StatusCode} - {errorContent}");
+            throw new HttpRequestException($"Refresh token failed: {resultAuth.StatusCode}");
+        }
 
         using var stream = await resultAuth.Content.ReadAsStreamAsync();
         using var jsonDoc = await JsonDocument.ParseAsync(stream);
