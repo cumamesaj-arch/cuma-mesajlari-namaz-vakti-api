@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using System.Net.Http;
 
 namespace DiyanetNamazVakti.Api.Web.Api.Controllers;
 
@@ -16,7 +17,25 @@ public class PlaceController : ControllerBase
     [HttpGet("Countries")]
     public async Task<ActionResult<IResult>> Country()
     {
-        return new SuccessDataResult<List<IdCodeName<int>>>(await _placeService.GetCountries());
+        try
+        {
+            var countries = await _placeService.GetCountries();
+            if (countries == null)
+            {
+                return new ErrorDataResult<List<IdCodeName<int>>>("Ülke listesi alınamadı. Diyanet API'ye ulaşılamıyor olabilir.");
+            }
+            return new SuccessDataResult<List<IdCodeName<int>>>(countries);
+        }
+        catch (HttpRequestException ex) when (ex.Message.Contains("rate limit") || ex.Message.Contains("Kota"))
+        {
+            // Rate limit hatası - mesajı parse et
+            var errorMessage = ex.Message.Contains(":") ? ex.Message.Split(':').Last().Trim() : "Kota aşıldı";
+            return new ErrorDataResult<List<IdCodeName<int>>>(errorMessage);
+        }
+        catch (Exception ex)
+        {
+            return new ErrorDataResult<List<IdCodeName<int>>>($"Hata: {ex.Message}");
+        }
     }
 
     [HttpGet("States")]

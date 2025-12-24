@@ -60,6 +60,30 @@ public class AwqatSalahApiService : IAwqatSalahConnectService
             // Hata durumunda response body'yi logla
             var errorContent = await result.Content.ReadAsStringAsync(cancellationToken);
             Console.WriteLine($"[AwqatSalahApiService] Error {result.StatusCode}: {errorContent}");
+            
+            // 406 NotAcceptable = Rate limit (kota aşıldı) - Exception fırlat ki PlaceService bunu yakalayabilsin
+            if (result.StatusCode == System.Net.HttpStatusCode.NotAcceptable)
+            {
+                // Error content'i parse et ve mesajı al
+                string errorMessage = "Kota aşıldı";
+                try
+                {
+                    using var errorDoc = JsonDocument.Parse(errorContent);
+                    if (errorDoc.RootElement.TryGetProperty("message", out var messageProp))
+                    {
+                        errorMessage = messageProp.GetString() ?? errorMessage;
+                    }
+                    else if (errorDoc.RootElement.TryGetProperty("Message", out var messageProp2))
+                    {
+                        errorMessage = messageProp2.GetString() ?? errorMessage;
+                    }
+                }
+                catch
+                {
+                    // Parse edilemezse, default mesajı kullan
+                }
+                throw new HttpRequestException($"Diyanet API rate limit: {errorMessage}", null, result.StatusCode);
+            }
         }
         return null;
     }
