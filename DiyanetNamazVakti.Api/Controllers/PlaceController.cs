@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System.Net.Http;
+using System.Linq;
 
 namespace DiyanetNamazVakti.Api.Web.Api.Controllers;
 
