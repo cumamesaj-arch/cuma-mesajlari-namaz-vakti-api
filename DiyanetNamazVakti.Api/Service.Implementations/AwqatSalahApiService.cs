@@ -26,7 +26,8 @@ public class AwqatSalahApiService : IAwqatSalahConnectService
 
         var request = string.Format(path);
 
-        await AddToken(cancellationToken);
+        // Token'ı al ve güncelle (AddToken hem token'ı alır hem de günceller)
+        var token = await AddToken(cancellationToken);
 
         // Her istek için yeni bir HttpRequestMessage oluştur ve token'ı ekle
         var baseAddress = _client.BaseAddress ?? new Uri("https://awqatsalah.diyanet.gov.tr/");
@@ -44,8 +45,7 @@ public class AwqatSalahApiService : IAwqatSalahConnectService
             requestMessage.Content = postModel;
         }
         
-        // Token'ı request message'a ekle
-        var token = await _cacheService.GetOrCreateAsync(nameof(CacheNameConstants.TokenCacheName), async () => await AwqatSalahLogin(cancellationToken), DateTime.Now.AddMinutes(_tokenLifeTimeMinutes));
+        // Token'ı request message'a ekle (AddToken'dan dönen güncel token'ı kullan)
         requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
 
         HttpResponseMessage result = await _client.SendAsync(requestMessage, cancellationToken);
@@ -88,7 +88,7 @@ public class AwqatSalahApiService : IAwqatSalahConnectService
         return null;
     }
 
-    private async Task AddToken(CancellationToken cancellationToken)
+    private async Task<TokenWithExpireModel> AddToken(CancellationToken cancellationToken)
     {
         var token = await _cacheService.GetOrCreateAsync(nameof(CacheNameConstants.TokenCacheName), async () => await AwqatSalahLogin(cancellationToken), DateTime.Now.AddMinutes(_tokenLifeTimeMinutes));
 
@@ -116,17 +116,24 @@ public class AwqatSalahApiService : IAwqatSalahConnectService
                     Console.WriteLine($"[AwqatSalahApiService] Refresh token failed ({ex.Message}), clearing cache and doing fresh login...");
                     _cacheService.Remove(CacheNameConstants.TokenCacheName);
                     token = await AwqatSalahLogin(cancellationToken);
+                    // Token'ı cache'e kaydet ve expire time'ı ayarla
                     await _cacheService.GetOrCreateAsync(CacheNameConstants.TokenCacheName, async () => token, DateTime.Now.AddMinutes(_tokenLifeTimeMinutes));
                     _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+                    Console.WriteLine($"[AwqatSalahApiService] Fresh login successful, new token expires at: {token.ExpireTime}");
                 }
             }
             else
             {
                 // Token çok eski, direkt login yap
                 _cacheService.Remove(CacheNameConstants.TokenCacheName);
-                await AddToken(cancellationToken);
+                token = await AwqatSalahLogin(cancellationToken);
+                await _cacheService.GetOrCreateAsync(CacheNameConstants.TokenCacheName, async () => token, DateTime.Now.AddMinutes(_tokenLifeTimeMinutes));
+                _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+                Console.WriteLine($"[AwqatSalahApiService] Token expired, fresh login successful, new token expires at: {token.ExpireTime}");
             }
         }
+        
+        return token;
     }
 
     private async Task<TokenWithExpireModel> AwqatSalahLogin(CancellationToken cancellationToken)
